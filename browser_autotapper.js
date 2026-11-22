@@ -1,13 +1,14 @@
 /**
- * Think Tank Auto-Tapper & Auto-Upgrader (VPS & Browser 24/7 Edition)
+ * Think Tank Auto-Tapper & Auto-Upgrader (24/7 Smart Bot with Auto-Bell)
  * Designed for: https://thinkers.games.moongate.com/
  * 
  * Features:
+ * - AUTO-BELL RINGING: Automatically clicks 'RING THE BELL' and 'THINK' when floor closes!
  * - Session Cycles: 20-25 min active playing -> 3-4 min complete break -> Auto-resumes
  * - Safe Human Speed: 7-10 Taps/Sec with natural jitter
  * - Auto-Upgrade: Periodically checks the TAP tab to buy Machines/Keyboards/Boosts
  * - Safe Floor Zone: Never clicks right sidebar danger buttons (Sign Out / Delete Data)
- * - Draggable Retro HUD with live break & session countdown
+ * - Draggable Retro HUD with live countdown
  */
 
 (function () {
@@ -19,14 +20,12 @@
         running: false,
         timer: null,
         sessionTimer: null,
-        mode: 'session', // 'session' (20-25m work / 3-4m rest)
+        mode: 'session',
         
-        // Speed & Human behavior
         minCPS: 7,
         maxCPS: 10,
         baseCPS: 8,
         
-        // Session schedule settings
         isSessionBreak: false,
         sessionEndTime: 0,
         breakEndTime: 0,
@@ -35,12 +34,10 @@
         minBreakMinutes: 3,
         maxBreakMinutes: 4,
         
-        // Auto-Upgrade settings
         autoUpgrade: true,
         lastUpgradeTime: 0,
-        upgradeIntervalMs: 6 * 60 * 1000, // Check upgrades every 6 mins
+        upgradeIntervalMs: 5 * 60 * 1000,
         
-        // Tapping state
         burstCount: 0,
         burstTarget: 35,
         totalTaps: 0,
@@ -159,6 +156,37 @@
         return { x, y };
     }
 
+    // CHECK AND RING THE BELL / CLICK THINK IF FLOOR IS CLOSED
+    function handleFloorClosed() {
+        // 1. Check for "RING THE BELL" button
+        const ringBellBtn = Array.from(document.querySelectorAll('button, div, span, a')).find(el => {
+            const text = (el.textContent || '').trim().toUpperCase();
+            return text.includes('RING THE BELL') && el.offsetHeight > 0 && el.offsetHeight < 120;
+        });
+
+        if (ringBellBtn) {
+            console.log('[Think Tank Bot] 🔔 Floor is closed! Clicking "RING THE BELL"...');
+            ringBellBtn.click();
+            updateStatusText('🔔 Rang Bell (Floor Open!)', '#f1c40f');
+            return true;
+        }
+
+        // 2. Check for "THINK" button (claim offline / idle points)
+        const thinkBtn = Array.from(document.querySelectorAll('button, div, span')).find(el => {
+            const text = (el.textContent || '').trim().toUpperCase();
+            return text === 'THINK' && el.offsetHeight > 0 && el.offsetHeight < 120;
+        });
+
+        if (thinkBtn) {
+            console.log('[Think Tank Bot] 💡 Clicking "THINK" button...');
+            thinkBtn.click();
+            updateStatusText('💡 Clicked THINK!', '#f1c40f');
+            return true;
+        }
+
+        return false;
+    }
+
     // Auto-Upgrade Handler
     async function performAutoUpgrade() {
         if (!state.autoUpgrade || !state.running) return;
@@ -167,6 +195,9 @@
         console.log('[Think Tank Bot] Navigating to TAP tab for upgrades...');
 
         try {
+            // First check if bell needs ringing
+            handleFloorClosed();
+
             // Find TAP tab button
             const tapTab = Array.from(document.querySelectorAll('div, button, span'))
                 .find(el => el.textContent.trim() === 'TAP' && el.offsetHeight > 0 && el.offsetHeight < 100);
@@ -202,7 +233,6 @@
         }
 
         state.lastUpgradeTime = Date.now();
-        console.log('[Think Tank Bot] Auto-upgrade cycle complete. Resuming tapping.');
     }
 
     // Main Tap Scheduling Loop
@@ -211,10 +241,18 @@
 
         const now = Date.now();
 
+        // Check if floor is closed or bell needs ringing every 10 taps
+        if (state.burstCount % 10 === 0) {
+            const reopened = handleFloorClosed();
+            if (reopened) {
+                state.timer = setTimeout(scheduleNextTap, 1000);
+                return;
+            }
+        }
+
         // 1. Check if in session break (3-4 mins)
         if (state.isSessionBreak) {
             if (now >= state.breakEndTime) {
-                // End break, start new 20-25m session
                 state.isSessionBreak = false;
                 const workMinutes = rand(state.minWorkMinutes, state.maxWorkMinutes);
                 state.sessionEndTime = now + workMinutes * 60 * 1000;
@@ -231,7 +269,6 @@
 
         // 2. Check if active session (20-25m) expired -> Enter break
         if (now >= state.sessionEndTime) {
-            // First do an auto-upgrade before taking a break!
             if (state.autoUpgrade) {
                 await performAutoUpgrade();
             }
@@ -245,7 +282,7 @@
             return;
         }
 
-        // 3. Check periodic auto-upgrade during session (every ~6 mins)
+        // 3. Periodic auto-upgrade
         if (state.autoUpgrade && (now - state.lastUpgradeTime > state.upgradeIntervalMs)) {
             await performAutoUpgrade();
         }
@@ -264,13 +301,11 @@
         const coords = getHumanCoordinates();
         simulateTap(coords.x, coords.y);
 
-        // Update countdown text
         const secLeft = Math.ceil((state.sessionEndTime - now) / 1000);
         const m = Math.floor(secLeft / 60);
         const s = secLeft % 60;
         updateStatusText(`⚡ Active (${m}m ${s < 10 ? '0' : ''}${s}s left)`, '#2ecc71');
 
-        // Randomized interval for 7-10 CPS with jitter
         const cps = randFloat(state.minCPS, state.maxCPS);
         const interval = Math.floor(1000 / cps);
         const delay = Math.floor(interval * randFloat(0.85, 1.25));
@@ -289,6 +324,9 @@
         state.burstTarget = rand(25, 50);
         state.lastUpgradeTime = now;
 
+        // Immediately check bell on startup
+        handleFloorClosed();
+
         const btn = document.getElementById('tt-toggle-btn');
         if (btn) {
             btn.textContent = '⏹ STOP TAPPING (F8)';
@@ -296,7 +334,6 @@
             btn.style.boxShadow = '0 0 15px rgba(231, 76, 60, 0.6)';
         }
 
-        console.log(`[Think Tank Bot] Started! Active work session: ${workMinutes} minutes.`);
         scheduleNextTap();
     }
 
@@ -357,13 +394,13 @@
                     ▶ START 24/7 CYCLE (F8)
                 </button>
 
-                <!-- Settings Box -->
                 <div style="margin-top: 10px; background: rgba(0,0,0,0.3); padding: 8px; border-radius: 4px; border: 1px solid #332d4a; font-size: 10px;">
                     <div style="color: #f6c85f; font-weight: bold; margin-bottom: 5px;">🤖 SMART HUMAN SCHEDULE:</div>
                     <div style="color: #bdc3c7; line-height: 1.4;">
-                        • <b>Active:</b> 20 - 25 minutes continuous<br>
+                        • <b>Active:</b> 20 - 25 minutes<br>
                         • <b>Break:</b> 3 - 4 minutes auto-rest<br>
-                        • <b>Speed:</b> 7 - 10 Taps/Sec (Human Limit)<br>
+                        • <b>Speed:</b> 7 - 10 Taps/Sec<br>
+                        • 🔔 <b>Auto-Rings Bell</b> when floor closes
                     </div>
 
                     <div style="margin-top: 6px; border-top: 1px solid #332d4a; padding-top: 6px;">
@@ -394,7 +431,6 @@
 
         document.body.appendChild(hud);
 
-        // Dragging logic
         const header = document.getElementById('tt-hud-header');
         let isDragging = false, startX = 0, startY = 0, initialLeft = 0, initialTop = 0;
 
