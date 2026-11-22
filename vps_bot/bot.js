@@ -1,6 +1,6 @@
 /**
- * Think Tank 24/7 VPS Bot - 8 Taps/Sec Floor Engine
- * Guarantees active floor mode, auto-bell, auto-think, and 8 taps/sec.
+ * Think Tank 24/7 VPS Bot - 8 Taps/Sec Floor Engine (Bug-Fixed)
+ * Guarantees real taps without false-positive bell matching.
  */
 
 const { chromium } = require('playwright');
@@ -39,7 +39,7 @@ async function runBot() {
 
     const page = await context.newPage();
 
-    // 1. Restore Session & FORCE Floor View (Don't open in Thinkers tab)
+    // 1. Restore Session & Force Floor View
     if (fs.existsSync(SESSION_FILE)) {
         console.log('🔑 Loading session from think_tank_session.json...');
         try {
@@ -57,7 +57,6 @@ async function runBot() {
                 if (cookieList.length > 0) await context.addCookies(cookieList);
             }
 
-            // Force floor mode in localStorage
             if (session.localStorage) {
                 session.localStorage['thinkers-floor:tab'] = 'floor';
                 await page.addInitScript((storage) => {
@@ -79,16 +78,13 @@ async function runBot() {
     console.log('✅ Page loaded! Waiting 10s for 3D engine to render...');
     await page.waitForTimeout(10000);
 
-    // 3. Close any blocking overlay (THINKERS or TASKS) to reveal floor
-    console.log('🧹 Ensuring 3D floor is completely visible...');
+    // 3. Close any blocking overlays (THINKERS or TASKS)
     await page.evaluate(() => {
-        // If BACK TO THE FLOOR button is open, click it
         const backBtn = Array.from(document.querySelectorAll('button, div, span, a')).find(el => 
             (el.textContent || '').includes('BACK TO THE FLOOR') && el.offsetHeight > 0
         );
         if (backBtn) backBtn.click();
 
-        // If CLOSE button is open, click it
         const closeBtn = Array.from(document.querySelectorAll('button, div, span')).find(el => 
             ((el.textContent || '').trim() === 'CLOSE' || (el.textContent || '').trim() === '✕') && el.offsetHeight > 0
         );
@@ -96,54 +92,40 @@ async function runBot() {
     });
     await page.waitForTimeout(2000);
 
-    // 4. Inject High-Speed 8 Taps/Sec Engine
-    console.log('⚡ Starting High-Speed 8 Taps/Sec Engine + Auto-Bell...');
+    // 4. Inject 8 Taps/Sec Engine (No early returns, exact button matching)
+    console.log('⚡ Starting High-Speed 8 Taps/Sec Engine...');
     await page.evaluate(() => {
         window.__TOTAL_TAPS__ = 0;
-        window.__LIVE_STATUS__ = '8 CPS Active';
+        window.__LIVE_STATUS__ = 'Tapping Active (8 CPS)';
 
         function rand(min, max) {
             return Math.floor(Math.random() * (max - min + 1)) + min;
         }
 
         function tap() {
-            // A. Check if floor closed -> RING THE BELL
-            const ringBellBtn = Array.from(document.querySelectorAll('button, div, span, a')).find(el => {
+            // A. Check for EXACT "RING THE BELL" button (Do NOT return, keep tapping!)
+            const ringBellBtn = Array.from(document.querySelectorAll('button, div[role="button"]')).find(el => {
                 const t = (el.textContent || '').trim().toUpperCase();
-                return t.includes('RING THE BELL') && el.offsetHeight > 0;
+                return t === 'RING THE BELL' && el.offsetHeight > 0;
             });
             if (ringBellBtn) {
                 ringBellBtn.click();
-                window.__LIVE_STATUS__ = '🔔 Rang Bell (Floor Re-Opened)';
-                return;
             }
 
-            // B. Check for THINK claim button
-            const thinkBtn = Array.from(document.querySelectorAll('button, div, span')).find(el => {
+            // B. Check for EXACT "THINK" button
+            const thinkBtn = Array.from(document.querySelectorAll('button, div[role="button"]')).find(el => {
                 const t = (el.textContent || '').trim().toUpperCase();
                 return t === 'THINK' && el.offsetHeight > 0;
             });
             if (thinkBtn) {
                 thinkBtn.click();
-                window.__LIVE_STATUS__ = '💡 Claimed THINK Points';
-                return;
             }
 
-            // C. If user is stuck on THINKERS or TASKS tab, go back to floor
-            const backBtn = Array.from(document.querySelectorAll('button, div, span, a')).find(el => 
-                (el.textContent || '').includes('BACK TO THE FLOOR') && el.offsetHeight > 0
-            );
-            if (backBtn) {
-                backBtn.click();
-                return;
-            }
-
-            // D. Tap on the 3D Floor Canvas
+            // C. Tap on the 3D Canvas
             const canvas = document.querySelector('canvas') || document.body;
             const w = window.innerWidth;
             const h = window.innerHeight;
 
-            // Safe floor coordinates (desk area on left/center)
             const x = rand(Math.floor(w * 0.15), Math.floor(w * 0.65));
             const y = rand(Math.floor(h * 0.20), Math.floor(h * 0.75));
 
@@ -169,7 +151,6 @@ async function runBot() {
                 pressure: 0.5
             };
 
-            // Dispatch on canvas, window, and document so all raycasters catch it
             canvas.dispatchEvent(new PointerEvent('pointerdown', ptrProps));
             canvas.dispatchEvent(new MouseEvent('mousedown', props));
             window.dispatchEvent(new PointerEvent('pointerdown', ptrProps));
@@ -179,13 +160,13 @@ async function runBot() {
                 canvas.dispatchEvent(new MouseEvent('mouseup', { ...props, buttons: 0 }));
                 canvas.dispatchEvent(new MouseEvent('click', { ...props, buttons: 0 }));
                 window.dispatchEvent(new MouseEvent('click', { ...props, buttons: 0 }));
-            }, 20);
+            }, 15);
 
             window.__TOTAL_TAPS__++;
             window.__LIVE_STATUS__ = '⚡ Tapping Active (8 CPS)';
         }
 
-        // Run steady at ~8 taps per second (125ms interval)
+        // Fast 8 CPS loop (125ms interval)
         function loop() {
             tap();
             setTimeout(loop, rand(115, 135));
@@ -194,13 +175,12 @@ async function runBot() {
         loop();
     });
 
-    console.log('🔥 8 TAPS/SECOND BOT IS RUNNING 24/7!');
+    console.log('🔥 8 TAPS/SECOND BOT IS RUNNING!');
 
     // 5. Live Score & Tap Reporter: Every 30 seconds
     setInterval(async () => {
         try {
             const data = await page.evaluate(() => {
-                // Find current score from page
                 const billboard = document.body.innerText;
                 const match = billboard.match(/([0-9.,]+[KMBT]?)\s*THTS/i) || billboard.match(/([0-9.,]+M)/);
                 const score = match ? match[0] : 'Scanning';
