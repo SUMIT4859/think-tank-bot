@@ -1,0 +1,12 @@
+{
+  "name": "think-tank-vps-bot",
+  "version": "1.0.0",
+  "description": "24/7 Autonomous Think Tank Game Bot for VPS",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js"
+  },
+  "dependencies": {
+    "playwright": "^1.44.0"
+  }
+}

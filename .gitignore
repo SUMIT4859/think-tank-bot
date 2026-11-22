@@ -1,0 +1,16 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Python
+__pycache__/
+*.pyc
+
+# Screenshots & logs
+*.png
+*.log
+
+# Sensitive session data
+# WARNING: If your GitHub repo is PUBLIC, do NOT remove this line!
+# If your GitHub repo is 100% PRIVATE, you can comment this out to push your session to VPS.
+# think_tank_session.json
