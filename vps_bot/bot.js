@@ -1,6 +1,6 @@
 /**
- * Think Tank 24/7 Headless VPS Automation Bot
- * Runs on Linux or Windows VPS via Playwright.
+ * Think Tank 24/7 VPS Native Bot (Direct Playwright Mouse Engine)
+ * Uses native CDP mouse events (100% isTrusted) + Auto-Bell Ringing.
  */
 
 const { chromium } = require('playwright');
@@ -9,14 +9,16 @@ const path = require('path');
 
 const GAME_URL = 'https://thinkers.games.moongate.com/?ref=wffz4rst3r38';
 const SESSION_FILE = path.join(__dirname, 'think_tank_session.json');
-const SCRIPT_FILE = path.join(__dirname, '..', 'browser_autotapper.js');
+
+function rand(min, max) {
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+}
 
 async function runBot() {
     console.log('==============================================');
-    console.log('🚀 Launching Think Tank 24/7 VPS Bot...');
+    console.log('🚀 Launching Think Tank VPS Native Mouse Bot...');
     console.log('==============================================');
 
-    // Launch Chromium with SwiftShader for headless WebGL support on Linux
     const browser = await chromium.launch({
         headless: true,
         args: [
@@ -25,25 +27,24 @@ async function runBot() {
             '--disable-dev-shm-usage',
             '--use-gl=swiftshader',
             '--enable-webgl',
+            '--mute-audio',
+            '--js-flags=--max-old-space-size=256',
             '--disable-blink-features=AutomationControlled'
         ]
     });
 
     const context = await browser.newContext({
-        viewport: { width: 1366, height: 768 },
+        viewport: { width: 1280, height: 720 },
         userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
     });
 
     const page = await context.newPage();
 
-    // 1. Load Session & Cookies if available
+    // 1. Restore Cookies & Session
     if (fs.existsSync(SESSION_FILE)) {
-        console.log('🔑 Found session file (think_tank_session.json). Restoring session...');
+        console.log('🔑 Restoring session from think_tank_session.json...');
         try {
-            const sessionRaw = fs.readFileSync(SESSION_FILE, 'utf8');
-            const session = JSON.parse(sessionRaw);
-
-            // Set cookies
+            const session = JSON.parse(fs.readFileSync(SESSION_FILE, 'utf8'));
             if (session.cookies) {
                 const cookieList = session.cookies.split(';').map(c => {
                     const [name, ...val] = c.trim().split('=');
@@ -54,104 +55,131 @@ async function runBot() {
                         path: '/'
                     };
                 }).filter(c => c.name && c.value);
-
-                if (cookieList.length > 0) {
-                    await context.addCookies(cookieList);
-                    console.log(`🍪 Restored ${cookieList.length} cookies.`);
-                }
+                if (cookieList.length > 0) await context.addCookies(cookieList);
             }
-
-            // Restore localStorage before loading page
             if (session.localStorage) {
                 await page.addInitScript((storage) => {
                     for (const [k, v] of Object.entries(storage)) {
                         try { window.localStorage.setItem(k, v); } catch(e){}
                     }
                 }, session.localStorage);
-                console.log('📦 Restored localStorage tokens.');
             }
-        } catch (err) {
-            console.error('⚠️ Error reading session file:', err.message);
+            console.log('✅ Session restored successfully.');
+        } catch (e) {
+            console.error('Session load error:', e.message);
         }
-    } else {
-        console.log('ℹ️ No session file found. Bot will load initial page.');
     }
 
     // 2. Navigate to Game
     console.log(`🌐 Navigating to ${GAME_URL}...`);
     await page.goto(GAME_URL, { waitUntil: 'domcontentloaded', timeout: 90000 });
-    console.log('✅ DOM loaded! Waiting for 3D engine and floor to render...');
-    
-    try {
-        await page.waitForSelector('canvas', { timeout: 25000 });
-        console.log('🎮 3D Canvas element detected successfully!');
-    } catch (e) {
-        console.log('⏳ Canvas loading in background, proceeding...');
-    }
-    await page.waitForTimeout(6000);
+    console.log('✅ DOM loaded. Waiting 10s for 3D engine to render...');
+    await page.waitForTimeout(10000);
 
-    // Try optional screenshot safely without crashing if VPS is low RAM
-    try {
-        await page.screenshot({ path: path.join(__dirname, 'latest_score.png'), timeout: 5000 });
-        console.log('📸 Saved initial screenshot -> latest_score.png');
-    } catch (e) {
-        console.log('ℹ️ Initial screenshot skipped (saving CPU/RAM for tapping).');
-    }
+    console.log('🔥 NATIVE PLAYWRIGHT MOUSE TAPPER ACTIVE!');
+    console.log('Schedule: 20-25m active tapping -> 3-4m rest -> Auto-Bell ringing.');
 
-    // 3. Inject and Start Auto-Tapper Script
-    console.log('💉 Injecting Think Tank Smart 24/7 Auto-Tapper with Auto-Bell & Upgrades...');
-    const botScript = fs.readFileSync(SCRIPT_FILE, 'utf8');
-    await page.evaluate(botScript);
+    // State Tracking
+    let totalTaps = 0;
+    let burstTaps = 0;
+    let burstLimit = rand(30, 60);
+    let sessionEndTime = Date.now() + rand(20, 25) * 60 * 1000;
+    let isBreak = false;
+    let breakEndTime = 0;
 
-    // Trigger start on the bot
-    await page.evaluate(() => {
-        if (window.__THINK_TANK_TAPPER__) {
-            window.__THINK_TANK_TAPPER__.start();
-        }
-    });
-    console.log('🔥 Bot actively tapping! Schedule: 20-25m work / 3-4m break with auto-bell & upgrades.');
+    // Floor Safe Box (3D Office on left side: avoid right menus)
+    const floorMinX = 180;
+    const floorMaxX = 750;
+    const floorMinY = 220;
+    const floorMaxY = 560;
 
-    // 4. Monitoring Loop: Log score every 5 minutes
-    let uptimeMinutes = 0;
-    const monitorInterval = setInterval(async () => {
+    // Focal cluster point (moves periodically to mimic human focus)
+    let focalX = rand(floorMinX + 50, floorMaxX - 50);
+    let focalY = rand(floorMinY + 50, floorMaxY - 50);
+
+    while (true) {
         try {
-            uptimeMinutes += 5;
-            const scoreText = await page.evaluate(() => {
-                const totalEl = document.getElementById('tt-stats');
-                const statusEl = document.getElementById('tt-live-status');
-                return {
-                    taps: totalEl ? totalEl.textContent : 'N/A',
-                    status: statusEl ? statusEl.textContent : 'N/A'
-                };
-            });
+            const now = Date.now();
 
-            console.log(`[Uptime: ${uptimeMinutes}m] ${scoreText.status} | ${scoreText.taps}`);
+            // 1. AUTO-BELL: Check if floor is closed or bell needs ringing
+            const bellBtn = await page.$('text="RING THE BELL"');
+            if (bellBtn) {
+                console.log('🔔 Floor is closed! Clicking RING THE BELL to reopen...');
+                await bellBtn.click({ force: true });
+                await page.waitForTimeout(1500);
+            }
 
-            // Optional screenshot every 15 mins (safe catch)
-            if (uptimeMinutes % 15 === 0) {
-                try {
-                    await page.screenshot({ path: path.join(__dirname, 'latest_score.png'), timeout: 5000 });
-                    console.log(`📸 Updated screenshot -> latest_score.png`);
-                } catch (err) {
-                    // Ignore screenshot timeouts on low-spec VPS
+            // Check for THINK button
+            const thinkBtn = await page.$('button:has-text("THINK")');
+            if (thinkBtn) {
+                console.log('💡 Found THINK button! Claiming points...');
+                await thinkBtn.click({ force: true });
+                await page.waitForTimeout(1000);
+            }
+
+            // 2. SCHEDULE: Check 3-4m Break
+            if (isBreak) {
+                if (now >= breakEndTime) {
+                    isBreak = false;
+                    const workMins = rand(20, 25);
+                    sessionEndTime = now + workMins * 60 * 1000;
+                    console.log(`☕ Break finished! Starting new active session for ${workMins} minutes.`);
+                } else {
+                    const secLeft = Math.ceil((breakEndTime - now) / 1000);
+                    if (secLeft % 30 === 0) console.log(`☕ Resting (${secLeft}s left)...`);
+                    await page.waitForTimeout(1000);
+                    continue;
                 }
             }
 
-            // Auto-reload after 4 hours to keep memory clean
-            if (uptimeMinutes >= 240) {
-                console.log('🔄 4-Hour scheduled refresh. Restarting browser...');
-                clearInterval(monitorInterval);
-                await browser.close();
-                runBot();
+            // Check if 20-25m session finished
+            if (now >= sessionEndTime) {
+                isBreak = true;
+                const breakMins = rand(3, 4);
+                breakEndTime = now + breakMins * 60 * 1000;
+                console.log(`☕ 20-25m session done! Taking a ${breakMins}m human break...`);
+                await page.waitForTimeout(1000);
+                continue;
             }
-        } catch (e) {
-            console.error('Monitoring tick warning:', e.message);
+
+            // 3. FINGER FATIGUE: Micro-pause after burst
+            if (burstTaps >= burstLimit) {
+                burstTaps = 0;
+                burstLimit = rand(25, 55);
+                // Shift focal point on floor
+                focalX = rand(floorMinX + 50, floorMaxX - 50);
+                focalY = rand(floorMinY + 50, floorMaxY - 50);
+                const microPause = rand(1200, 2400);
+                await page.waitForTimeout(microPause);
+                continue;
+            }
+
+            // 4. REAL HARDWARE CLICK via Playwright Mouse
+            const tapX = Math.max(floorMinX, Math.min(floorMaxX, focalX + rand(-35, 35)));
+            const tapY = Math.max(floorMinY, Math.min(floorMaxY, focalY + rand(-35, 35)));
+
+            // Native CDP mouse click (100% isTrusted, native hardware event)
+            await page.mouse.click(tapX, tapY);
+            totalTaps++;
+            burstTaps++;
+
+            if (totalTaps % 100 === 0) {
+                console.log(`⚡ [LIVE TAPPING] Total Taps: ${totalTaps.toLocaleString()} | Current session active`);
+            }
+
+            // Speed: 7 to 9 taps/sec (110ms - 145ms delay)
+            const delay = rand(105, 145);
+            await page.waitForTimeout(delay);
+
+        } catch (loopErr) {
+            console.error('Loop warning:', loopErr.message);
+            await page.waitForTimeout(2000);
         }
-    }, 5 * 60 * 1000);
+    }
 }
 
 process.on('unhandledRejection', (reason, promise) => {
-    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+    console.error('Unhandled Rejection:', reason);
 });
 
 runBot().catch(err => {
