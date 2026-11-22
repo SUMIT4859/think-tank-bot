@@ -23,7 +23,7 @@ async function runBot() {
             '--no-sandbox',
             '--disable-setuid-sandbox',
             '--disable-dev-shm-usage',
-            '--use-gl=swiftshader', // Robust software WebGL for VPS
+            '--use-gl=swiftshader',
             '--enable-webgl',
             '--disable-blink-features=AutomationControlled'
         ]
@@ -77,26 +77,29 @@ async function runBot() {
         console.log('ℹ️ No session file found. Bot will load initial page.');
     }
 
-    // 2. Navigate to Game (Use 'domcontentloaded' because game streams audio & live WebSockets)
+    // 2. Navigate to Game
     console.log(`🌐 Navigating to ${GAME_URL}...`);
     await page.goto(GAME_URL, { waitUntil: 'domcontentloaded', timeout: 90000 });
     console.log('✅ DOM loaded! Waiting for 3D engine and floor to render...');
     
-    // Wait for canvas or give 10 seconds for 3D scene to mount
     try {
         await page.waitForSelector('canvas', { timeout: 25000 });
         console.log('🎮 3D Canvas element detected successfully!');
     } catch (e) {
-        console.log('⏳ Canvas taking a moment, continuing...');
+        console.log('⏳ Canvas loading in background, proceeding...');
     }
     await page.waitForTimeout(6000);
 
-    // Save initial screenshot
-    await page.screenshot({ path: path.join(__dirname, 'latest_score.png') });
-    console.log('📸 Saved initial screenshot -> latest_score.png');
+    // Try optional screenshot safely without crashing if VPS is low RAM
+    try {
+        await page.screenshot({ path: path.join(__dirname, 'latest_score.png'), timeout: 5000 });
+        console.log('📸 Saved initial screenshot -> latest_score.png');
+    } catch (e) {
+        console.log('ℹ️ Initial screenshot skipped (saving CPU/RAM for tapping).');
+    }
 
     // 3. Inject and Start Auto-Tapper Script
-    console.log('💉 Injecting Think Tank Smart 24/7 Auto-Tapper...');
+    console.log('💉 Injecting Think Tank Smart 24/7 Auto-Tapper with Auto-Bell & Upgrades...');
     const botScript = fs.readFileSync(SCRIPT_FILE, 'utf8');
     await page.evaluate(botScript);
 
@@ -106,9 +109,9 @@ async function runBot() {
             window.__THINK_TANK_TAPPER__.start();
         }
     });
-    console.log('🔥 Bot actively tapping! Schedule: 20-25m work / 3-4m break with auto-upgrades.');
+    console.log('🔥 Bot actively tapping! Schedule: 20-25m work / 3-4m break with auto-bell & upgrades.');
 
-    // 4. Monitoring Loop: Log score and take screenshot every 15 minutes
+    // 4. Monitoring Loop: Log score every 5 minutes
     let uptimeMinutes = 0;
     const monitorInterval = setInterval(async () => {
         try {
@@ -124,10 +127,14 @@ async function runBot() {
 
             console.log(`[Uptime: ${uptimeMinutes}m] ${scoreText.status} | ${scoreText.taps}`);
 
-            // Update screenshot every 15 mins
+            // Optional screenshot every 15 mins (safe catch)
             if (uptimeMinutes % 15 === 0) {
-                await page.screenshot({ path: path.join(__dirname, 'latest_score.png') });
-                console.log(`📸 Updated screenshot -> latest_score.png`);
+                try {
+                    await page.screenshot({ path: path.join(__dirname, 'latest_score.png'), timeout: 5000 });
+                    console.log(`📸 Updated screenshot -> latest_score.png`);
+                } catch (err) {
+                    // Ignore screenshot timeouts on low-spec VPS
+                }
             }
 
             // Auto-reload after 4 hours to keep memory clean
