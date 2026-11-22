@@ -1,15 +1,6 @@
 /**
  * Think Tank 24/7 Headless VPS Automation Bot
  * Runs on Linux or Windows VPS via Playwright.
- * 
- * Features:
- * - 24/7 autonomous running without keeping your laptop open
- * - Auto-login using your exported session JSON (cookies & localStorage)
- * - Human-like schedule: 20-25 mins tapping -> 3-4 mins rest
- * - 7-10 Taps/sec with natural jitter
- * - Auto-Upgrade: purchases Machine, Keyboard, and Coffee boosts
- * - Takes periodic screenshots (latest_score.png) to monitor progress
- * - Auto memory cleanup / reload every 4 hours to prevent memory leaks
  */
 
 const { chromium } = require('playwright');
@@ -25,14 +16,14 @@ async function runBot() {
     console.log('🚀 Launching Think Tank 24/7 VPS Bot...');
     console.log('==============================================');
 
-    // Launch Chromium with WebGL enabled
+    // Launch Chromium with SwiftShader for headless WebGL support on Linux
     const browser = await chromium.launch({
-        headless: true, // Run headlessly on VPS
+        headless: true,
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
             '--disable-dev-shm-usage',
-            '--use-gl=angle', // Hardware/Software WebGL support
+            '--use-gl=swiftshader', // Robust software WebGL for VPS
             '--enable-webgl',
             '--disable-blink-features=AutomationControlled'
         ]
@@ -86,11 +77,19 @@ async function runBot() {
         console.log('ℹ️ No session file found. Bot will load initial page.');
     }
 
-    // 2. Navigate to Game
+    // 2. Navigate to Game (Use 'domcontentloaded' because game streams audio & live WebSockets)
     console.log(`🌐 Navigating to ${GAME_URL}...`);
-    await page.goto(GAME_URL, { waitUntil: 'networkidle', timeout: 60000 });
-    console.log('✅ Page loaded. Waiting for 3D canvas and assets to initialize...');
-    await page.waitForTimeout(10000);
+    await page.goto(GAME_URL, { waitUntil: 'domcontentloaded', timeout: 90000 });
+    console.log('✅ DOM loaded! Waiting for 3D engine and floor to render...');
+    
+    // Wait for canvas or give 10 seconds for 3D scene to mount
+    try {
+        await page.waitForSelector('canvas', { timeout: 25000 });
+        console.log('🎮 3D Canvas element detected successfully!');
+    } catch (e) {
+        console.log('⏳ Canvas taking a moment, continuing...');
+    }
+    await page.waitForTimeout(6000);
 
     // Save initial screenshot
     await page.screenshot({ path: path.join(__dirname, 'latest_score.png') });
@@ -131,20 +130,19 @@ async function runBot() {
                 console.log(`📸 Updated screenshot -> latest_score.png`);
             }
 
-            // Auto-reload after 4 hours (240 mins) to prevent WebGL browser memory leaks
+            // Auto-reload after 4 hours to keep memory clean
             if (uptimeMinutes >= 240) {
-                console.log('🔄 4-Hour scheduled refresh to keep WebGL memory clean. Restarting browser...');
+                console.log('🔄 4-Hour scheduled refresh. Restarting browser...');
                 clearInterval(monitorInterval);
                 await browser.close();
-                runBot(); // Self-restart
+                runBot();
             }
         } catch (e) {
             console.error('Monitoring tick warning:', e.message);
         }
-    }, 5 * 60 * 1000); // Check every 5 minutes
+    }, 5 * 60 * 1000);
 }
 
-// Handle uncaught errors
 process.on('unhandledRejection', (reason, promise) => {
     console.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });
